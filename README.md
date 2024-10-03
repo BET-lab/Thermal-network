@@ -3,8 +3,10 @@
 This files attribute the function and class for 1 dimensional thermal network analysis
 
 ## Installation
+```
 pip install git+https://github.com/BET-lab/Thermal-network.git
-Copy
+```
+
 ## Usage
 
 Here's a basic example of how to use the library:
