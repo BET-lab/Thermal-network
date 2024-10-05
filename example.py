@@ -6,7 +6,7 @@ import constant as c
 from tqdm import tqdm
 import thermal_network as tn
 
-# Example usage
+# Run simulation (fully unsteady model)
 # Create simulation time
 sim_time = tn.SimulationTime(PST=0, MST=1, dt=100)
 
@@ -30,5 +30,60 @@ wall = tn.SetConstruction(name="Wall", layers=[concrete, insulation], area=10,
 roof = tn.SetConstruction(name="Roof", layers=[concrete, insulation], area=20, 
                         roughness="rough", azimuth=0, tilt=0, Tinit=tn.C2K(20))
 
-# Run simulation
-tn.run_building_exergy_model([wall, roof], sim_time, weather, indoor_air, "output_folder")
+tn.run_building_exergy_model_fully_unsteady([wall, roof], sim_time, weather, indoor_air, "output_folder")
+
+
+
+# Run simulation (single capacitance model)
+sim_time = tn.SimulationTime(PST=0, MST=24.0, dt=10)
+
+# Define weather data
+weather_data = tn.Weather(
+    year=2023,
+    month=1,
+    day=1,
+    local_hour=0,
+    local_min=0,
+    local_sec=0,
+    local_latitude=37.7749,
+    local_longitude=-122.4194,
+    standard_longitude=-120,
+    temp=np.random.uniform(low=tn.C2K(0), high=tn.C2K(20), size=sim_time.tN),
+    Vz=np.random.uniform(low=0, high=5, size=sim_time.tN),
+    Gh=np.random.uniform(low=0, high=800, size=sim_time.tN)
+)
+
+# Define indoor air conditions
+indoor_air = tn.IndoorAir(
+    temperature=tn.C2K(20),  # 20°C in Kelvin
+    volume=100.0,  # 100 m3
+    ACH=0.1  # Air changes per hour
+)
+
+# Define building structure
+wall =  tn.SetSingleCapacitanceComponent(
+        name="Wall",
+        roughness="medium rough",
+        L=0.2,  # 20 cm
+        k=0.5,  # W/mK
+        c=1000,  # J/kgK
+        rho=2200,  # kg/m3
+        area=10.0,  # m2
+        azimuth=180,  # South-facing
+        tilt=90,  # Vertical
+        Tinit=tn.C2K(20)  # Initial temperature 20°C in Kelvin
+    )
+structure = [wall]
+
+# Define file path for output
+output_filepath = "../output"
+
+# Run the building exergy model
+tn.run_building_exergy_model_single_capacitance(
+    Structure=structure,
+    SimulationTime=sim_time,
+    Weather=weather_data,
+    IndoorAir=indoor_air,
+    filepath=output_filepath
+)
+

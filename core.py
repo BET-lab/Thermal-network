@@ -77,6 +77,9 @@ class SimulationTime:
 # Weather data related class
 @dataclass
 class Weather:
+    '''
+    Gh는 수평 전천일사를 의미함
+    '''
     year: int
     month: int
     day: int
