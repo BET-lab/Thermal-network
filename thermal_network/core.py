@@ -338,12 +338,14 @@ def run_building_exergy_model_single_capacitance(Structure: List[SetSingleCapaci
         q_EPSD = eliminate_pre_simulation_data(q[i], SimulationTime.ts_PST)
         Carnot_eff_EPSD = eliminate_pre_simulation_data(Carnot_eff[i], SimulationTime.ts_PST)
         CXcR_EPSD = eliminate_pre_simulation_data(CXcR[i], SimulationTime.ts_PST)
+        q_rad_EPSD = eliminate_pre_simulation_data(q_rad[i], SimulationTime.ts_PST)
 
         columns = ["OS", "Middle", "IS"]
         T_df = pd.DataFrame(K2C(T_EPSD), columns=columns, index=time_index[SimulationTime.ts_PST:])
         q_df = pd.DataFrame(q_EPSD, columns=columns, index=time_index[SimulationTime.ts_PST:])
         CXcR_df = pd.DataFrame(CXcR_EPSD, columns=None, index=time_index[SimulationTime.ts_PST:])
         Carnot_eff_df = pd.DataFrame(Carnot_eff_EPSD, columns=columns, index=time_index[SimulationTime.ts_PST:])
+        q_rad_df = pd.DataFrame(q_rad_EPSD, columns=["Solar Radiation [W/m2]"], index=time_index[SimulationTime.ts_PST:])
 
         # Export to Excel
         filename = f"{construction.name}.xlsx"
@@ -352,6 +354,7 @@ def run_building_exergy_model_single_capacitance(Structure: List[SetSingleCapaci
             q_df.to_excel(writer, sheet_name='q')
             CXcR_df.to_excel(writer, sheet_name='XcR')
             Carnot_eff_df.to_excel(writer, sheet_name='Carnot_eff')
+            q_rad_df.to_excel(writer, sheet_name='q_rad')
     
     # Export indoor air temperature
     Tia_df = pd.DataFrame(K2C(Tia_EPSD), columns=["Indoor Air Temperature [°C]"], index=time_index[SimulationTime.ts_PST:])
