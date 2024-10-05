@@ -1,8 +1,8 @@
 import numpy as np
 import pandas as pd
-import convection as cv
-import radiation as rd
-import constant as c
+from . import constants as c
+from . import radiation as rd
+from . import convection as cv
 from tqdm import tqdm
 from typing import List
 from dataclasses import dataclass
