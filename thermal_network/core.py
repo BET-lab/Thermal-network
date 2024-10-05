@@ -326,9 +326,7 @@ def run_building_exergy_model_single_capacitance(Structure: List[SetSingleCapaci
 
             # Calculate Carnot efficiency
             Carnot_eff[cidx][n+1, :] = 1 - Toa[n+1,0] / T[cidx][n+1, :]
-
-    CXcR = (construction.R) * (Toa * (q[:][:,1] / T[:][:,1])**2) # Exergy consumption rate [W/m3]
-
+    CXcR = (construction.R) * (Toa[:,0] * (q[:,:,1] / T[:,:,1])**2) # Exergy consumption rate [W/m3]
 
     # Post-processing
     Tia_EPSD = eliminate_pre_simulation_data(Tia, SimulationTime.ts_PST)
@@ -339,7 +337,7 @@ def run_building_exergy_model_single_capacitance(Structure: List[SetSingleCapaci
         T_EPSD = eliminate_pre_simulation_data(T[i], SimulationTime.ts_PST)
         q_EPSD = eliminate_pre_simulation_data(q[i], SimulationTime.ts_PST)
         Carnot_eff_EPSD = eliminate_pre_simulation_data(Carnot_eff[i], SimulationTime.ts_PST)
-        CXcR_EPSD = eliminate_pre_simulation_data(CXcR, SimulationTime.ts_PST)
+        CXcR_EPSD = eliminate_pre_simulation_data(CXcR[i], SimulationTime.ts_PST)
 
         columns = ["OS", "Middle", "IS"]
         T_df = pd.DataFrame(K2C(T_EPSD), columns=columns, index=time_index[SimulationTime.ts_PST:])
