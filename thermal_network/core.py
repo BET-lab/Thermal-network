@@ -1,6 +1,6 @@
 import numpy as np
 import pandas as pd
-from . import constants as c
+from . import constant as c
 from . import radiation as rd
 from . import convection as cv
 from tqdm import tqdm
