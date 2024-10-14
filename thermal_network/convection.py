@@ -1,7 +1,3 @@
-import math
-from datetime import datetime
-from .import constant as c
-
 # exeterior convection coefficient 
 def simple_combined_convection(roughness, Vz):
     roughness_values = {
