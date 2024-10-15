@@ -1,5 +1,7 @@
 # import constant as c # absolute import (for module)
 
+import os
+import sys
 from .import constant as c # relative import (for package)
 import math
 from datetime import datetime
@@ -80,6 +82,12 @@ def GHI_MJm2_to_DNI_H_and_DHI(GHI_MJm2, station, year, month, day, local_hour):
     Converts Global Horizontal Irradiance (GHI) data [MJ/m2] to Direct Normal Irradiance on a Horizontal surface (DNI_H) [W/m2]
     and Diffuse Horizontal Irradiance (DHI) [W/m2] using an Excel-based calculation.
     '''
+    # 현재 스크립트의 디렉토리 경로를 얻습니다
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    
+    # Excel 파일의 경로를 구성합니다
+    excel_path = os.path.join(current_dir, "DHI_calculator.xlsm")
+    
     import xlwings as xw
 
     # Number of days in each month (ignoring leap years)
@@ -89,7 +97,7 @@ def GHI_MJm2_to_DNI_H_and_DHI(GHI_MJm2, station, year, month, day, local_hour):
     app = xw.App(visible=False)
     wb = None  # Initialize workbook as None
     try:
-        wb = app.books.open("DHI_calculator.xlsm")  # Open Excel file
+        wb = app.books.open(excel_path)  
         menu_sheet = wb.sheets["Main.Menu"]
         DHI_sheet = wb.sheets["DHI"]
 
