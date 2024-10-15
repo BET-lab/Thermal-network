@@ -1,4 +1,6 @@
-from .import constant as c
+# import constant as c # absolute import (for module)
+
+from .import constant as c # relative import (for package)
 import math
 from datetime import datetime
 from location import location
@@ -121,6 +123,7 @@ def GHI_MJm2_to_DNI_H_and_DHI(GHI_MJm2, station, year, month, day, local_hour):
         app.quit()
 
     return DNI_H, DHI
+
 
 ## 3.2 Solar Radiation on Tilted Surface
 def solar_to_unit_surface(DNI_H, DHI, station, year, month, day, local_hour, local_min, local_sec, surface_tilt, surface_azimuth):
