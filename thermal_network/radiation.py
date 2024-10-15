@@ -40,7 +40,7 @@ def solar_position(station, year, month, day, local_hour, local_min, local_sec, 
     '''
     Calculates the solar altitude and azimuth for a given location and time.
     '''
-    local_latitude, local_longitude = location[station]
+    local_latitude, local_longitude = station
     
     # Equation of Time
     day_of_year = datetime(year, month, day).timetuple().tm_yday
