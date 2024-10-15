@@ -3,7 +3,6 @@
 from .import constant as c # relative import (for package)
 import math
 from datetime import datetime
-from location import location
 
 
 ### 1. Constants and Conversions
