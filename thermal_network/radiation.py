@@ -1,9 +1,8 @@
 # import constant as c # absolute import (for module)
 
-# from .import constant as c # relative import (for package)
-# from .import location as loc # relative import (for package) 
-import constant as c
-import location as loc
+import os
+import sys
+from .import constant as c # relative import (for package)
 import math
 from datetime import datetime
 
@@ -41,7 +40,11 @@ def solar_position(station, year, month, day, local_hour, local_min, local_sec, 
     '''
     Calculates the solar altitude and azimuth for a given location and time.
     '''
+<<<<<<< HEAD
     local_latitude, local_longitude = loc.location[station]
+=======
+    local_latitude, local_longitude = station
+>>>>>>> c5a3366c39f51c8c4ee28098ca5ba9a9abdc591f
     
     # Equation of Time
     day_of_year = datetime(year, month, day).timetuple().tm_yday
@@ -83,6 +86,12 @@ def GHI_MJm2_to_DNI_H_and_DHI(GHI_MJm2, station, year, month, day, local_hour):
     Converts Global Horizontal Irradiance (GHI) data [MJ/m2] to Direct Normal Irradiance on a Horizontal surface (DNI_H) [W/m2]
     and Diffuse Horizontal Irradiance (DHI) [W/m2] using an Excel-based calculation.
     '''
+    # 현재 스크립트의 디렉토리 경로를 얻습니다
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    
+    # Excel 파일의 경로를 구성합니다
+    excel_path = os.path.join(current_dir, "DHI_calculator.xlsm")
+    
     import xlwings as xw
 
     # Number of days in each month (ignoring leap years)
@@ -92,7 +101,7 @@ def GHI_MJm2_to_DNI_H_and_DHI(GHI_MJm2, station, year, month, day, local_hour):
     app = xw.App(visible=False)
     wb = None  # Initialize workbook as None
     try:
-        wb = app.books.open("DHI_calculator.xlsm")  # Open Excel file
+        wb = app.books.open(excel_path)  
         menu_sheet = wb.sheets["Main.Menu"]
         DHI_sheet = wb.sheets["DHI"]
 
