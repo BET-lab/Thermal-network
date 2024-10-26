@@ -1,9 +1,11 @@
 # import constant as c # absolute import (for module)
 
-from .import constant as c # relative import (for package)
+# from .import constant as c # relative import (for package)
+# from .import location as loc # relative import (for package) 
+import constant as c
+import location as loc
 import math
 from datetime import datetime
-from location import location
 
 
 ### 1. Constants and Conversions
@@ -39,7 +41,7 @@ def solar_position(station, year, month, day, local_hour, local_min, local_sec, 
     '''
     Calculates the solar altitude and azimuth for a given location and time.
     '''
-    local_latitude, local_longitude = location[station]
+    local_latitude, local_longitude = loc.location[station]
     
     # Equation of Time
     day_of_year = datetime(year, month, day).timetuple().tm_yday

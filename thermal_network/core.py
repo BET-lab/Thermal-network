@@ -1,10 +1,10 @@
-# import constant as c
-# import radiation as rd
-# import convection as cv
+import constant as c
+import radiation as rd
+import convection as cv
 
-from .import constant as c
-from .import radiation as rd
-from .import convection as cv
+# from .import constant as c
+# from .import radiation as rd
+# from .import convection as cv
 
 import numpy as np
 import pandas as pd
@@ -155,7 +155,9 @@ class Layer:
 ## 2.5 Building Structure Class
 @dataclass
 class Construction:
-    '''This class is used to define the building structure'''
+    '''This class is used to define the building structure
+    추가할 수정사항
+    1. Tinit을 설정하면 자동으로 첫 타임스텝의 온도를 설정하도록 수정'''
     name: str
     layers: List[Layer]
     roughness: str
@@ -240,7 +242,7 @@ def eliminate_pre_simulation_data(data: np.ndarray, pre_simulation_time_step: in
 ## 3.2 TDMA Calculation Function
 def TDMA(Construction: Construction, T: np.ndarray, T_L: float, T_R: float, dt: float) -> np.ndarray:
     # TDMA (Tri-Diagonal Matrix Algorithm) calculation
-    N = Construction.N
+    N = Construction.total_discr_num
     dx = Construction.dx
     K_L, K_R = Construction.K_L, Construction.K_R
     C = Construction.C
