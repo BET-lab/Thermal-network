@@ -1,10 +1,10 @@
-import constant as c
-import radiation as rd
-import convection as cv
+# import constant as c
+# import radiation as rd
+# import convection as cv
 
-# from .import constant as c
-# from .import radiation as rd
-# from .import convection as cv
+from .import constant as c
+from .import radiation as rd
+from .import convection as cv
 
 import numpy as np
 import pandas as pd
