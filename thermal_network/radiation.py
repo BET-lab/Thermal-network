@@ -3,6 +3,7 @@
 import os
 import sys
 from .import constant as c # relative import (for package)
+from .import location as loc # relative import (for package)
 import math
 from datetime import datetime
 
@@ -40,11 +41,9 @@ def solar_position(station, year, month, day, local_hour, local_min, local_sec, 
     '''
     Calculates the solar altitude and azimuth for a given location and time.
     '''
-<<<<<<< HEAD
+
     local_latitude, local_longitude = loc.location[station]
-=======
     local_latitude, local_longitude = station
->>>>>>> c5a3366c39f51c8c4ee28098ca5ba9a9abdc591f
     
     # Equation of Time
     day_of_year = datetime(year, month, day).timetuple().tm_yday
