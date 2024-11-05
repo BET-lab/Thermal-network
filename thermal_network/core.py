@@ -5,6 +5,7 @@
 from .import constant as c
 from .import radiation as rd
 from .import convection as cv
+from .import weather as wd
 
 import numpy as np
 import pandas as pd
@@ -33,10 +34,6 @@ def F2C(temp_F: float) -> float:
 
 def C2F(temp_C: float) -> float:
     return temp_C * 9 / 5 + 32
-
-## 1.2 Unit Conversion Functions
-def cm2in(cm: float) -> float:
-    return cm / 2.54
 
 ## 1.3 Array and DataFrame Conversion Functions
 def arr2df(arr: np.ndarray) -> pd.DataFrame:
@@ -68,67 +65,11 @@ def interpolate_hourly_data(hourly_data: np.ndarray, time_step: float) -> np.nda
 
 ### 2. Data Classes
 
-## 2.1 Simulation Time Class
-@dataclass
-class SimulationTimeParameters:
-    PST: float  # Pre-simulation time [hr]
-    MST: float  # Main-simulation time [hr]
-    dt: float   # Time step [s]
-    start_time: pd.Timestamp
-
-    def __post_init__(self):
-        # Calculate simulation times
-        self.TST = self.PST + self.MST  # Total-simulation time [hr]
-        self.end_time = self.start_time + pd.Timedelta(hours=self.TST)
-        self.time_step = pd.Timedelta(seconds=self.dt)
-        
-        # Generate time range
-        '''
-        time_range: 시작 시간부터 종료 시간까지 시간 간격을 time_step으로 설정한 시간 배열
-        '''
-        self.time_range = pd.date_range(start=self.start_time, end=self.end_time, freq=self.time_step)
-        
-        # Calculate time steps
-        self.tN = len(self.time_range)
-        self.ts_PST = int(self.PST * c.h2s / self.dt)  # Number of pre-simulation time steps
-        self.ts_MST = int(self.MST * c.h2s / self.dt)  # Number of main-simulation time steps
-        self.ts_TST = self.ts_PST + self.ts_MST  # Number of total-simulation time steps
-        
-        # Generate time arrays
-        self.ts_s = np.arange(0, self.tN) * self.dt  # time step array [s]
-        self.ts_m = self.ts_s * c.s2m  # time step array [min]
-        self.ts_h = self.ts_s * c.s2h  # time step array [hr]
-
-    def get_pre_simulation_range(self):
-        return self.time_range[:self.ts_PST]
-
-    def get_main_simulation_range(self):
-        return self.time_range[self.ts_PST:]
-
-    def get_time_index(self, time):
-        return self.time_range.get_loc(time)
-
- 
-## 2.2 Weather Data Class
-@dataclass
-class WeatherData:
-    location: str
-    sim_time_params: SimulationTimeParameters
-    temp: np.ndarray
-    Vz: np.ndarray
-    GHI_MJm2: np.ndarray
-    standard_longitude: float = 135 # standard longitude of Korea
-
-    def __post_init__(self):
-        self.sol_alt, self.sol_azi = rd.solar_position(self.location, self.sim_time_params, self.standard_longitude)
-        self.BHI, self.DHI = rd.GHI_MJm2_to_BHI_DHI(self.GHI_MJm2, self.sol_alt, self.sim_time_params.time_range.dayofyear)
-
-
 ## 2.3 Indoor Air Class
 @dataclass
 class IndoorAir:
     ACH: float # Air change rate [1/hr]
-    h_ci: float # convective heat transfer coefficient [W/m2K]
+    h_ib: float # convective heat transfer coefficient [W/m2K]
     volume: float # Volume of indoor air [m3]
     specific_heat_capacity: float = 1005 # specific heat capacity of air [J/kgK]
     density: float = 1.225 # density of air [kg/m3]
@@ -192,7 +133,9 @@ class Construction:
         self.thick = sum(layer.L for layer in self.layers)
 
         # Volumetric heat capacity [J/m3K]
+        self.c = np.repeat([layer.c for layer in self.layers], self.layer_discr_counts)
         self.C = np.repeat([layer.C for layer in self.layers], self.layer_discr_counts)
+        self.rho = np.repeat([layer.rho for layer in self.layers], self.layer_discr_counts)
 
         # Cell size and distance between node [m]
         self.dx = np.repeat([layer.dx for layer in self.layers], self.layer_discr_counts)
@@ -213,6 +156,22 @@ class Construction:
         self.R_tot = np.sum(self.R)
         self.K_tot = 1 / self.R_tot
 
+        # Calculate node center positions from left surface [m]
+        cumsum_dx = np.cumsum(self.dx)
+        self.node_positions = np.array([dx/2 for dx in self.dx])  # Initialize with half of first dx
+        for i in range(1, len(self.dx)):
+            self.node_positions[i] = cumsum_dx[i-1] + self.dx[i]/2
+
+        # Create node center position strings in centimeters
+        self.node_cent_pos = [f"{pos*c.m2cm:.1f} cm" for pos in self.node_positions]
+
+        # Calculate surface positions from left surface [m]
+        self.surface_positions = np.zeros(self.total_discr_num + 1)
+        self.surface_positions[1:] = np.cumsum(self.dx)
+        
+        # Create surface position strings in centimeters
+        self.node_surf_pos = [f"{pos*c.m2cm:.1f} cm" for pos in self.surface_positions]
+
     def get_thermal_capacity_per_area(self):
         return np.sum(self.C * self.dx) # [J/m2K]
 
@@ -220,11 +179,11 @@ class Construction:
 ### 3. Simulation Functions
 
 ## 3.1 Data Processing Function
-def eliminate_pre_simulation_data(data: np.ndarray, pre_simulation_time_step: int) -> np.ndarray:
+def del_pre_sim_data(data: np.ndarray, sim_time_params) -> np.ndarray:
     if data.ndim == 1:
-        return data[pre_simulation_time_step:]
+        return data[sim_time_params.ts_PST:]
     elif data.ndim == 2:
-        return data[pre_simulation_time_step:, :]
+        return data[sim_time_params.ts_PST:, :]
 
 ## 3.2 TDMA Calculation Function
 def TDMA(Construction: Construction, T: np.ndarray, T_L: float, T_R: float, dt: float) -> np.ndarray:
@@ -253,17 +212,17 @@ def TDMA(Construction: Construction, T: np.ndarray, T_L: float, T_R: float, dt: 
     
 
 ## 3.4 Building exergy model simulation functions
-def simulate_one_node_building_exergy(structure: List[Construction], simulation_time_parameters: SimulationTimeParameters,
-                                                 weather: WeatherData, indoor_air: IndoorAir, filepath: str):
+def simulate_one_node_building_exergy(structure: List[Construction], sim_time_params: wd.SimulationTimeParameters,
+                                                 weather: wd.WeatherData, indoor_air: IndoorAir, filepath: str):
     '''
     수정사항
     1. Xlsx 파일 -> 각 csv 파일로 저장
-
     '''
+
     # Simulation variables
     cN = len(structure) # compoenent number [-]
-    dt = simulation_time_parameters.dt # time step [s]
-    tN = simulation_time_parameters.tN # time step number [-]
+    dt = sim_time_params.dt # time step [s]
+    tN = sim_time_params.tN # time step number [-]
 
     envelope_azi_arr = np.array([construction.azimuth for construction in structure])
     envelope_tilt_arr = np.array([construction.tilt for construction in structure])
@@ -274,13 +233,13 @@ def simulate_one_node_building_exergy(structure: List[Construction], simulation_
     GHI = weather.GHI.reshape(-1, 1) # Global Horizontal Irradiance [W/m2] (reshape for broadcasting)
 
     # Calculate solar radiation
-    Normal_q = np.zeros((len(envelope_azi_arr), tN)) # [W/m2]
+    Norm_rad = np.zeros((len(envelope_azi_arr), tN)) # [W/m2]
     for i, (azi, tilt) in enumerate(zip(envelope_azi_arr, envelope_tilt_arr)):
-        Normal_q[i] = rd.solar_to_unit_surface(
+        Norm_rad[i] = rd.solar_to_unit_surface(
                                                 BHI = weather.BHI, 
                                                 DHI = weather.DHI, 
                                                 station = weather.location, 
-                                                SimulationTimeParameters = simulation_time_parameters,
+                                                SimulationTimeParameters = sim_time_params,
                                                 surface_tilt=tilt, 
                                                 surface_azimuth=azi
                                                 )
@@ -298,15 +257,15 @@ def simulate_one_node_building_exergy(structure: List[Construction], simulation_
         Carnot_eff[cidx][0,:] = 1 - Toa[0] / construction.Tinit
 
     # Convective heat transfer coefficients
-    h_ci = indoor_air.h_ci
-    R_ci = 1 / h_ci
+    h_ib = indoor_air.h_ib
+    R_ib = 1 / h_ib
 
     # Simulation time loop
     for n in tqdm(range(tN-1), desc="Simulation progress"):
 
         # Calculate heat gain and update indoor air temperature
-        heat_gain = sum(h_ci * construction.area * (T[cidx][n,-1] - Tia[n,0]) for cidx ,construction in enumerate(structure)) * dt # heat gain by the component [W]
-        indoor_air.temp_update(heat_gain, Toa[n+1,0], simulation_time_parameters.dt)
+        heat_gain = sum(h_ib * construction.area * (T[cidx][n,-1] - Tia[n,0]) for cidx ,construction in enumerate(structure)) * dt # heat gain by the component [W]
+        indoor_air.temp_update(heat_gain, Toa[n+1,0], sim_time_params.dt)
         Tia[n+1,0] = indoor_air.temperature
 
         # loop for each component
@@ -321,8 +280,8 @@ def simulate_one_node_building_exergy(structure: List[Construction], simulation_
             T[cidx][n+1, 1] =  T[cidx][n,1] + (q[cidx][n,0] - q[cidx][n,-1]) * dt / (construction.get_thermal_capacity_per_area())
            
             # Calculate interface temperatures & heat fluxes (explicit method)
-            T[cidx][n+1, 0] = (T[cidx][n+1,1] / R_half + Toa[n+1,0] / R_co[n+1] + Normal_q[cidx][n+1]) / (1 / R_half + 1 / R_co[n+1]) # left surface
-            T[cidx][n+1,-1] = (T[cidx][n+1,1] / R_half + Tia[n+1,0] / R_ci) / (1 / R_ci + 1 / R_half) # right surface
+            T[cidx][n+1, 0] = (T[cidx][n+1,1] / R_half + Toa[n+1,0] / R_co[n+1] + Norm_rad[cidx][n+1]) / (1 / R_half + 1 / R_co[n+1]) # left surface
+            T[cidx][n+1,-1] = (T[cidx][n+1,1] / R_half + Tia[n+1,0] / R_ib) / (1 / R_ib + 1 / R_half) # right surface
             
             q[cidx][n+1, 0] = (T[cidx][n+1,0] - T[cidx][n+1,1]) / (R_half)
             q[cidx][n+1,-1] = (T[cidx][n+1,1] - T[cidx][n+1,-1]) / (R_half)
@@ -338,23 +297,23 @@ def simulate_one_node_building_exergy(structure: List[Construction], simulation_
 
     # Component loop
     for i, construction in enumerate(structure):
-        # Eliminate pre-simulation data (EPSD)
-        T_EPSD = eliminate_pre_simulation_data(T[i], simulation_time_parameters.ts_PST)
-        q_EPSD = eliminate_pre_simulation_data(q[i], simulation_time_parameters.ts_PST)
-        Carnot_eff_EPSD = eliminate_pre_simulation_data(Carnot_eff[i], simulation_time_parameters.ts_PST)
-        CXcR_EPSD = eliminate_pre_simulation_data(CXcR[i], simulation_time_parameters.ts_PST)
-        Normal_q_EPSD = eliminate_pre_simulation_data(Normal_q[i], simulation_time_parameters.ts_PST)
+        # Eliminate pre-simulation data (DPSD)
+        T_DPSD = del_pre_sim_data(T[i], sim_time_params.ts_PST)
+        q_DPSD = del_pre_sim_data(q[i], sim_time_params.ts_PST)
+        Carnot_eff_DPSD = del_pre_sim_data(Carnot_eff[i], sim_time_params.ts_PST)
+        CXcR_DPSD = del_pre_sim_data(CXcR[i], sim_time_params.ts_PST)
+        Norm_rad_DPSD = del_pre_sim_data(Norm_rad[i], sim_time_params.ts_PST)
 
         # Data framing
         columns = ["OS", "Middle", "IS"]
-        time_index = simulation_time_parameters.time_range[simulation_time_parameters.ts_PST:].astype(str)
+        time_index = sim_time_params.time_range[sim_time_params.ts_PST:].astype(str)
 
         # Create DataFrames
-        T_df = pd.DataFrame(K2C(T_EPSD), columns=columns, index=time_index)
-        q_df = pd.DataFrame(q_EPSD, columns=columns, index=time_index)
-        CXcR_df = pd.DataFrame(CXcR_EPSD, columns=None, index=time_index)
-        Carnot_eff_df = pd.DataFrame(Carnot_eff_EPSD, columns=columns, index=time_index)
-        Normal_q_df = pd.DataFrame(Normal_q_EPSD, columns=["Solar Radiation [W/m2]"], index=time_index)
+        T_df = pd.DataFrame(K2C(T_DPSD), columns=columns, index=time_index)
+        q_df = pd.DataFrame(q_DPSD, columns=columns, index=time_index)
+        CXcR_df = pd.DataFrame(CXcR_DPSD, columns=None, index=time_index)
+        Carnot_eff_df = pd.DataFrame(Carnot_eff_DPSD, columns=columns, index=time_index)
+        Norm_rad_df = pd.DataFrame(Norm_rad_DPSD, columns=["Solar Radiation [W/m2]"], index=time_index)
 
         # Export to separate CSV files
         base_name = construction.name
@@ -362,16 +321,16 @@ def simulate_one_node_building_exergy(structure: List[Construction], simulation_
         q_df.to_csv(f"{filepath}/{base_name}_q.csv")
         CXcR_df.to_csv(f"{filepath}/{base_name}_XcR.csv")
         Carnot_eff_df.to_csv(f"{filepath}/{base_name}_Carnot_eff.csv")
-        Normal_q_df.to_csv(f"{filepath}/{base_name}_Normal_q.csv")
+        Norm_rad_df.to_csv(f"{filepath}/{base_name}_Norm_rad.csv")
 
     # Post-processing and separate environment data files
-    Tia_EPSD = eliminate_pre_simulation_data(Tia, simulation_time_parameters.ts_PST)
-    Toa_EPSD = eliminate_pre_simulation_data(Toa, simulation_time_parameters.ts_PST)
-    GHI_EPSD = eliminate_pre_simulation_data(GHI, simulation_time_parameters.ts_PST)
+    Tia_DPSD = del_pre_sim_data(Tia, sim_time_params.ts_PST)
+    Toa_DPSD = del_pre_sim_data(Toa, sim_time_params.ts_PST)
+    GHI_DPSD = del_pre_sim_data(GHI, sim_time_params.ts_PST)
 
     # Create and export indoor air temperature
     indoor_air_df = pd.DataFrame(
-        K2C(Tia_EPSD), 
+        K2C(Tia_DPSD), 
         columns=["Indoor Air Temperature [°C]"], 
         index=time_index
     )
@@ -379,7 +338,7 @@ def simulate_one_node_building_exergy(structure: List[Construction], simulation_
 
     # Create and export outdoor air temperature
     outdoor_air_df = pd.DataFrame(
-        K2C(Toa_EPSD), 
+        K2C(Toa_DPSD), 
         columns=["Outdoor Air Temperature [°C]"], 
         index=time_index
     )
@@ -387,63 +346,80 @@ def simulate_one_node_building_exergy(structure: List[Construction], simulation_
 
     # Create and export global horizontal irradiance
     ghi_df = pd.DataFrame(
-        GHI_EPSD, 
+        GHI_DPSD, 
         columns=["Global Horizontal Irradiance [W/m2]"], 
         index=time_index
     )
     ghi_df.to_csv(f"{filepath}/global_horizontal_irradiance.csv")
     
 
-def run_building_exergy_model_fully_unsteady(structure: List[Construction], simulation_time_parameters: SimulationTimeParameters, 
-                         weather: WeatherData, indoor_air: IndoorAir, filepath: str):
+def run_building_exergy_model_fully_unsteady(
+        structure: List[Construction],
+        weather: wd.WeatherData,
+        indoor_air: IndoorAir,
+        filepath: str,
+        ):
     ''' 미완성 '''
     # Main simulation function
     
     # Initialize simulation
     num_constructions = len(structure)
-    tN = simulation_time_parameters.tN
-    dt = simulation_time_parameters.dt
-    time_index = simulation_time_parameters.ts_h
+    sim_time_params = weather.sim_time_params
+    tN = sim_time_params.tN
+    dt = sim_time_params.dt
+    time_index = sim_time_params.ts_h
 
     # Extract building structure parameters
-    envelope_azi  = np.array([construction.azimuth for construction in structure])
-    envelope_tilt = np.array([construction.tilt for construction in structure])
 
     # Set outdoor and indoor conditions
-    Toa = weather.temp.reshape(-1, 1)
+    Toa = weather.temp.reshape(-1, 1) # outdoor air temperature [K] (reshape for broadcasting)
+    Tia = np.full((tN,1), IndoorAir.temperature) # indoor air temperature [K]
+    GHI = weather.GHI.reshape(-1, 1) # Global Horizontal Irradiance [W/m2] (reshape for broadcasting)
     Vz = weather.Vz
-    Normal_q = calculate_BHI(weather, envelope_azi, envelope_tilt, tN, dt)
-    Tia = np.full((tN+1,1), indoor_air.temperature)
 
-    # Initialize matrices
-    T = np.zeros((num_constructions, tN + 1, max(construction.N for construction in structure)))
-    T_L = np.zeros_like(T)
-    T_R = np.zeros_like(T)
-    q_in = np.zeros_like(T)
-    q = np.zeros_like(T)
-    q_out = np.zeros_like(T)
-    Carnot_eff_L = np.zeros_like(T)
-    Carnot_eff_R = np.zeros_like(T)
+    # Calculate solar radiation
+    Norm_rad = np.zeros((len(num_constructions), tN)) # [W/m2]
+    for i in range(num_constructions):
+        Norm_rad[i] = rd.solar_to_unit_surface(
+                                            weather = weather,
+                                            construction = structure[i],
+                                            )
+
+    # Initialize matrices # [component][time, node]
+    node_nums = np.array([construction.total_discr_num for construction in structure]) # structure를 구성하는 construction 별 노드 개수를 따옴
+    T = [np.zeros((tN+1, node_num)) for node_num in node_nums] 
+    T_L = [np.zeros((tN+1, node_num)) for node_num in node_nums]
+    T_R = [np.zeros((tN+1, node_num)) for node_num in node_nums]
+    q = [np.zeros((tN+1, node_num)) for node_num in node_nums]
+    q_in = [np.zeros((tN+1, node_num)) for node_num in node_nums]
+    q_out = [np.zeros((tN+1, node_num)) for node_num in node_nums]
+    Carnot_eff = [np.zeros((tN+1, node_num)) for node_num in node_nums]
+    Carnot_eff_L = [np.zeros((tN+1, node_num)) for node_num in node_nums]
+    Carnot_eff_R = [np.zeros((tN+1, node_num)) for node_num in node_nums]
+    
 
     # Set initial conditions
     for cidx, construction in enumerate(structure):
         T[cidx][0,:] = construction.Tinit
         T_L[cidx][0,:] = construction.Tinit
         T_R[cidx][0,:] = construction.Tinit
+        Carnot_eff[cidx][0,:] = 1 - Toa[0] / construction.Tinit
         Carnot_eff_L[cidx][0,:] = 1 - Toa[0] / construction.Tinit
         Carnot_eff_R[cidx][0,:] = 1 - Toa[0] / construction.Tinit
 
-    # Convective heat transfer coefficients
-    h_ci = 4
-    R_ci = 1 / h_ci
+    # Overall heat transfer coefficients [W/m2K]
+    h_ib = 7
+    R_ib = 1 / h_ib
 
-    # Main simulation loop
+    # Main simulation time loop
     for n in tqdm(range(tN), desc="Simulation progress"):
-        # Calculate heat gain and update indoor air temperature
-        heat_gain = sum(h_ci * construction.area * (T_R[cidx][n, -1] - Tia[n,0]) for cidx ,construction in enumerate(structure)) * dt # [W]
-        indoor_air.temp_update(heat_gain, Toa[n+1,0], simulation_time_parameters.dt)
-        Tia[n+1,0] = indoor_air.temperature
 
+        # Calculate heat gain and update indoor air temperature
+        heat_gain = sum(h_ib * construction.area * (T_R[cidx][n, -1] - Tia[n,0]) for cidx, construction in enumerate(structure)) * dt # [W]
+        indoor_air.temp_update(heat_gain, Toa[n+1,0], sim_time_params.dt)
+        Tia[n+1,0] = indoor_air.temperature
+        
+        # construction loop
         for cidx, construction in enumerate(structure):
             # Calculate outdoor convection coefficient
             h_co = cv.simple_combined_convection(construction.roughness, Vz)
@@ -453,8 +429,8 @@ def run_building_exergy_model_fully_unsteady(structure: List[Construction], simu
             T[cidx][n+1, :] = TDMA(construction, T[cidx][n, :], T_L[cidx][n, 0], T_R[cidx][n, -1], dt)
 
             # Calculate interface temperatures
-            T_L[cidx][n+1, 0]  = (T[cidx][n+1, 0] / construction.R_L()[0]   + Toa[n+1,0] / R_co[n+1] + Normal_q[n+1, 0]) / (1 / construction.R_L()[0] + 1 / R_co[n+1])
-            T_R[cidx][n+1, -1] = (T[cidx][n+1, -1] / construction.R_R()[-1] + Tia[n+1,0] / R_ci) / (1 / R_ci + 1 / construction.R_R()[-1])
+            T_L[cidx][n+1, 0]  = (T[cidx][n+1, 0] / construction.R_L[0]   + Toa[n+1,0] / R_co[n+1] + Norm_rad[n+1, 0]) / (1 / construction.R_L[0] + 1 / R_co[n+1])
+            T_R[cidx][n+1, -1] = (T[cidx][n+1, -1] / construction.R_R[-1] + Tia[n+1,0] / R_ib) / (1 / R_ib + 1 / construction.R_R[-1])
             
             # Linear interpolation for interface temperatures
             T_L[cidx][n+1, 1:]  = T[cidx][n+1, :-1] + (T[cidx][n+1, 1:] - T[cidx][n+1, :-1]) * (construction.dx[:-1] / (construction.dx[:-1] + construction.dx[1:]))
@@ -471,62 +447,96 @@ def run_building_exergy_model_fully_unsteady(structure: List[Construction], simu
             Carnot_eff_L[cidx][n+1, :] = 1 - Toa[n+1,0] / T_L[cidx][n+1, :]
             Carnot_eff_R[cidx][n+1, :] = 1 - Toa[n+1,0] / T_R[cidx][n+1, :]
 
+
+    # half time matrix
+    '''
+    각 structure를 구성하는 construction 별로 half time matrix를 구함
+    '''
+    T_hf = [half_time_matrix(T[cidx], axis=0) for cidx, construction in enumerate(structure)]
+    T_L_hf = [half_time_matrix(T_L[cidx], axis=0) for cidx, construction in enumerate(structure)]
+    T_R_hf = [half_time_matrix(T_R[cidx], axis=0) for cidx, construction in enumerate(structure)]
+
+    q_hf = [half_time_matrix(q[cidx], axis=0) for cidx, construction in enumerate(structure)]
+    q_in_hf = [half_time_matrix(q_in[cidx], axis=0) for cidx, construction in enumerate(structure)]
+    q_out_hf = [half_time_matrix(q_out[cidx], axis=0) for cidx, construction in enumerate(structure)]
+    
+    Carnot_eff_hf = [half_time_matrix(Carnot_eff[cidx], axis=0) for cidx, construction in enumerate(structure)]
+    Carnot_eff_L_hf = [half_time_matrix(Carnot_eff_L[cidx], axis=0) for cidx, construction in enumerate(structure)]  
+    Carnot_eff_R_hf = [half_time_matrix(Carnot_eff_R[cidx], axis=0) for cidx, construction in enumerate(structure)]
     
     # Post-processing
-    Tia_EPSD = eliminate_pre_simulation_data(Tia, simulation_time_parameters.ts_PST)
-    Tia_EPSD_hf = half_time_matrix(Tia_EPSD, axis=0)
+    CXcR = [construction.R * (Toa[:,0] * (q_hf[cidx][:,1] / T_hf[cidx][:,1])**2) for cidx, construction in enumerate(structure)] # Exergy consumption rate [W/m2]
+    CXstR = [Carnot_eff[cidx] * construction.dx * construction.C * (T[cidx][1:,:]-T[cidx][:-1,:])/dt for cidx, construction in enumerate(structure)] # Exergy storage rate [W/m2]
+    CXst = [construction.rho * construction.c * construction.dx((T[cidx]-Toa[cidx])-Toa[cidx]*np.log(T[cidx]/Toa)) for cidx, construction in enumerate(structure)] # Stored exergy [J/m2]
 
-    for i, construction in enumerate(structure):
-        # Eliminate pre-simulation data (EPSD)
-        Toa_EPSD = eliminate_pre_simulation_data(Toa, simulation_time_parameters.ts_PST)
-        T_L_EPSD = eliminate_pre_simulation_data(T_L[i], simulation_time_parameters.ts_PST)
-        T_EPSD = eliminate_pre_simulation_data(T[i], simulation_time_parameters.ts_PST)
-        T_R_EPSD = eliminate_pre_simulation_data(T_R[i], simulation_time_parameters.ts_PST)
-        q_in_EPSD = eliminate_pre_simulation_data(q_in[i], simulation_time_parameters.ts_PST)
-        q_EPSD = eliminate_pre_simulation_data(q[i], simulation_time_parameters.ts_PST)
-        q_out_EPSD = eliminate_pre_simulation_data(q_out[i], simulation_time_parameters.ts_PST)
-        Carnot_eff_L_EPSD = eliminate_pre_simulation_data(Carnot_eff_L[i], simulation_time_parameters.ts_PST)
-        Carnot_eff_R_EPSD = eliminate_pre_simulation_data(Carnot_eff_R[i], simulation_time_parameters.ts_PST)
+    CXf_L = [Carnot_eff_L_hf[cidx](q_in_hf[cidx]) for cidx,construction in enumerate(structure)] # Exergy flow [W/m2] 엑서지 플럭스의 경우는 Xout 의 맨 마지막을 제외하고는 인과 아웃이 일치한다. 
+    CXf_R = [Carnot_eff_R_hf[cidx](q_out_hf[cidx]) for cidx,construction in enumerate(structure)] # Exergy flow [W/m2] 엑서지 플럭스의 경우는 Xout 의 맨 마지막을 제외하고는 인과 아웃이 일치한다.
+    CXf = CXf_L.append(CXf_R[-1]) # Exergy flow [W/m2] 엑서지 플럭스의 경우는 Xout 의 맨 마지막을 제외하고는 인과 아웃이 일치한다.
 
-        # Calculate half time step values
-        Toa_hf = half_time_matrix(Toa_EPSD, axis=0)
-        T_L_hf = half_time_matrix(T_L_EPSD, axis=0)
-        T_hf = half_time_matrix(T_EPSD, axis=0)
-        T_R_hf = half_time_matrix(T_R_EPSD, axis=0)
-        q_in_hf = half_time_matrix(q_in_EPSD, axis=0)
-        q_hf = half_time_matrix(q_EPSD, axis=0)
-        q_out_hf = half_time_matrix(q_out_EPSD, axis=0)
-        Carnot_eff_L_hf = half_time_matrix(Carnot_eff_L_EPSD, axis=0)
-        Carnot_eff_R_hf = half_time_matrix(Carnot_eff_R_EPSD, axis=0)
+    # 데이터 전처리
+    time_index = sim_time_params.time_range[sim_time_params.ts_PST:].astype(str)
 
-        # Data concatenation
-        T_concat = np.concatenate((T_L_hf[:, 0].reshape(-1, 1), T_hf, T_R_hf[:, -1].reshape(-1, 1)), axis=1)
-        q_node = q_hf
-        q_intf = np.concatenate((q_in_hf, q_out_hf[:, -1].reshape(-1, 1)), axis=1)
-        CXcR = (1 / construction.K()) * (Toa_hf * (q_hf / T_hf)**2)
-        Carnot_eff_hf = np.concatenate((Carnot_eff_L_hf, Carnot_eff_R_hf[:, -1].reshape(-1, 1)), axis=1)
+    # 모든 데이터 pre simulation data 제거
+    T_DPSD = [del_pre_sim_data(T[i], sim_time_params) for i in range(len(structure))]
+    q_DPSD = [del_pre_sim_data(q[i], sim_time_params) for i in range(len(structure))]
+    Carnot_eff_hf_DPSD = [del_pre_sim_data(Carnot_eff_hf[i], sim_time_params) for i in range(len(structure))]
+    CXcR_DPSD = [del_pre_sim_data(CXcR[i], sim_time_params) for i in range(len(structure))]
+    Norm_rad_DPSD = [del_pre_sim_data(Norm_rad[i], sim_time_params) for i in range(len(structure))]
+    CXstR_DPSD = [del_pre_sim_data(CXstR[i], sim_time_params) for i in range(len(structure))]
+    CXst_DPSD = [del_pre_sim_data(CXst[i], sim_time_params) for i in range(len(structure))]
+    CXf_DPSD = [del_pre_sim_data(CXf[i], sim_time_params) for i in range(len(structure))]
 
-        # Create DataFrames
-        x_node = [f"{round(i, 1)} cm" for i in np.cumsum(construction.dx_L()*c.m2cm)]
-        x_node_BC = ['0.0 cm'] + x_node + [f"{construction.thick*c.m2cm:.1f} cm"]
-        x_interface = ['0.0 cm'] + [f"{round(i, 1)} cm" for i in np.cumsum(construction.dx*c.m2cm)]
+    # DataFrame 생성
+    T_dfs = [pd.DataFrame(K2C(T_DPSD[cidx]), columns=construction.node_cent_pos, index=time_index) for cidx, construction in enumerate(structure)]
+    q_dfs = [pd.DataFrame(q_DPSD[cidx], columns=construction.node_cent_pos, index=time_index) for cidx, construction in enumerate(structure)]
+    CXcR_dfs = [pd.DataFrame(CXcR_DPSD[cidx], columns=construction.node_cent_pos, index=time_index) for cidx, construction in enumerate(structure)]
+    Carnot_eff_dfs = [pd.DataFrame(Carnot_eff_hf_DPSD[cidx], columns=construction.node_cent_pos, index=time_index) for cidx, construction in enumerate(structure)]
+    Norm_rad_dfs = [pd.DataFrame(Norm_rad_DPSD[cidx], columns=["Solar Radiation [W/m2]"], index=time_index) for cidx, construction in enumerate(structure)]
+    CXstR_dfs = [pd.DataFrame(CXstR_DPSD[cidx], columns=construction.node_cent_pos, index=time_index) for cidx, construction in enumerate(structure)]
+    CXst_dfs = [pd.DataFrame(CXst_DPSD[cidx], columns=construction.node_cent_pos, index=time_index) for cidx, construction in enumerate(structure)]
+    CXf_dfs = [pd.DataFrame(CXf_DPSD[cidx], columns=construction.node_surf_pos, index=time_index) for cidx, construction in enumerate(structure)]
 
-        T_df = pd.DataFrame(K2C(T_concat), columns=x_node_BC, index=time_index)
-        q_node_df = pd.DataFrame(q_node, columns=x_node, index=time_index)
-        q_intf_df = pd.DataFrame(q_intf, columns=x_interface, index=time_index)
-        CXcR_df = pd.DataFrame(CXcR, columns=x_node, index=time_index)
-        Carnot_eff_df = pd.DataFrame(Carnot_eff_hf, columns=x_interface, index=time_index)
+    # CSV 파일 저장
+    [T_dfs[i].to_csv(f"{filepath}/{structure[i].name}_T.csv") for i in range(len(structure))]
+    [q_dfs[i].to_csv(f"{filepath}/{structure[i].name}_q.csv") for i in range(len(structure))]
+    [CXcR_dfs[i].to_csv(f"{filepath}/{structure[i].name}_XcR.csv") for i in range(len(structure))]
+    [Carnot_eff_dfs[i].to_csv(f"{filepath}/{structure[i].name}_Carnot_eff.csv") for i in range(len(structure))]
+    [Norm_rad_dfs[i].to_csv(f"{filepath}/{structure[i].name}_Norm_rad.csv") for i in range(len(structure))]
+    [CXstR_dfs[i].to_csv(f"{filepath}/{structure[i].name}_CXstR.csv") for i in range(len(structure))]
+    [CXst_dfs[i].to_csv(f"{filepath}/{structure[i].name}_CXst.csv") for i in range(len(structure))]
+    [CXf_dfs[i].to_csv(f"{filepath}/{structure[i].name}_CXf.csv") for i in range(len(structure))]
 
-        # Export to Excel
-        filename = f"{construction.name}.xlsx"
-        with pd.ExcelWriter(f"{filepath}/{filename}") as writer:
-            T_df.to_excel(writer, sheet_name='T')
-            q_node_df.to_excel(writer, sheet_name='q_node')
-            q_intf_df.to_excel(writer, sheet_name='q_intf')
-            CXcR_df.to_excel(writer, sheet_name='XcR')
-            Carnot_eff_df.to_excel(writer, sheet_name='Carnot_eff')
-    
-    # Export indoor air temperature
-    filename = "IndoorAir.xlsx"
-    Tia_df = pd.DataFrame(K2C(Tia_EPSD_hf), columns=["Indoor Air Temperature [°C]"], index=time_index)
-    Tia_df.to_excel(f"{filepath}/{filename}")
+    # 환경 데이터 처리
+    Tia_DPSD = del_pre_sim_data(Tia, sim_time_params)
+    Toa_DPSD = del_pre_sim_data(Toa, sim_time_params)
+    GHI_DPSD = del_pre_sim_data(GHI, sim_time_params)
+
+    # Post-processing and separate environment data files
+    Tia_DPSD = del_pre_sim_data(Tia, sim_time_params)
+    Toa_DPSD = del_pre_sim_data(Toa, sim_time_params)
+    GHI_DPSD = del_pre_sim_data(GHI, sim_time_params)
+
+    # Create and export indoor air temperature
+    indoor_air_df = pd.DataFrame(
+        K2C(Tia_DPSD), 
+        columns=["Indoor Air Temperature [°C]"], 
+        index=time_index
+    )
+
+    # Create and export outdoor air temperature
+    outdoor_air_df = pd.DataFrame(
+        K2C(Toa_DPSD),
+        columns=["Outdoor Air Temperature [°C]"], 
+        index=time_index
+    )
+
+    # Create and export global horizontal irradiance
+    ghi_df = pd.DataFrame(
+        GHI_DPSD, 
+        columns=["Global Horizontal Irradiance [W/m2]"], 
+        index=time_index
+    )
+
+    indoor_air_df.to_csv(f"{filepath}/indoor_air_temperature.csv")
+    outdoor_air_df.to_csv(f"{filepath}/outdoor_air_temperature.csv")
+    ghi_df.to_csv(f"{filepath}/global_horizontal_irradiance.csv")

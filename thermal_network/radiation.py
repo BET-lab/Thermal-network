@@ -1,6 +1,7 @@
 # 1. Imports and Setup
 from .import constant as c  # relative import (for package)
 from .import location as loc  # relative import (for package)
+from .import weather as wd  # relative import (for package)
 
 import math
 from datetime import datetime
@@ -19,7 +20,7 @@ earth_axial_tilt = 23.45  # Earth's axial tilt [deg]
 ## 3.1. Equation of Time
 def equation_of_time(day_of_year):
     """
-    Calculate the difference between true solar time and mean solar time.
+    get the difference between true solar time and mean solar time.
     
     Args:
         day_of_year (int): Day of year (1-365)
@@ -37,9 +38,9 @@ def equation_of_time(day_of_year):
     return EOT
 
 ## 3.2. Solar Position Calculator
-def solar_position(station, SimulationTimeParameters, standard_longitude=135):
+def get_solar_position(station, SimulationTimeParameters, standard_longitude=135):
     """
-    Calculate solar altitude and azimuth for a given location and time.
+    get solar altitude and azimuth for a given location and time.
     
     Args:
         station (str): Observatory name (e.g., 'Gwangju')
@@ -57,29 +58,29 @@ def solar_position(station, SimulationTimeParameters, standard_longitude=135):
     # Location information
     local_latitude, local_longitude = loc.location[station]
     
-    # Calculate day of year
+    # get day of year
     day_of_year = np.array(SimulationTimeParameters.time_range.dayofyear)
     
-    # Calculate equation of time
+    # get equation of time
     EOT = equation_of_time(day_of_year)
     
-    # Calculate solar time
+    # get solar time
     delta_longitude = local_longitude - standard_longitude
     local_time_decimal = local_hour + local_min * c.m2h + local_sec * c.s2h
     solar_time_decimal = local_time_decimal + (delta_longitude * deg2min + EOT) * c.m2h
     
-    # Calculate hour angle (-180 to 180 degrees, negative for east, positive for west)
+    # get hour angle (-180 to 180 degrees, negative for east, positive for west)
     hour_angle = solar_time_decimal * hour2deg - 180
     
-    # Calculate solar declination
+    # get solar declination
     solar_declination = earth_axial_tilt * np.sin(d2r * deg_360 * (284 + day_of_year) / c.y2d)
     
-    # Calculate solar altitude
+    # get solar altitude
     term_1 = (np.cos(d2r * local_latitude) * np.cos(d2r * solar_declination) * np.cos(d2r * hour_angle)
               + np.sin(d2r * local_latitude) * np.sin(d2r * solar_declination))
     solar_altitude = r2d * np.arcsin(term_1)
 
-    # Calculate solar azimuth (0° at north, clockwise)
+    # get solar azimuth (0° at north, clockwise)
     term_2 = (np.sin(d2r * solar_declination) * np.cos(d2r * local_latitude) -
               np.cos(d2r * hour_angle) * np.cos(d2r * solar_declination) * np.sin(d2r * local_latitude)) / np.sin(d2r * (90-solar_altitude))
     
@@ -91,9 +92,11 @@ def solar_position(station, SimulationTimeParameters, standard_longitude=135):
 
 # 4. Solar Radiation Functions
 ## 4.1. Extraterrestrial Radiation
-def calculate_extraterrestrial_radiation(solar_altitude, day_of_year):
+def get_ext_rad(
+        weather: wd.WeatherData,
+                ):
     """
-    Calculate extraterrestrial radiation on a horizontal surface.
+    get extraterrestrial radiation on a horizontal surface.
     
     Args:
         solar_altitude (float/array): Solar altitude angle in radians
@@ -102,15 +105,22 @@ def calculate_extraterrestrial_radiation(solar_altitude, day_of_year):
     Returns:
         float/array: Extraterrestrial radiation (W/m²)
     """
+    sol_alt = weather.sol_alt
+    day_of_year = weather.sim_time_params.time_range.dayofyear
+
     solar_constant = 1367  # W/m²
     distance_correction = 1 + 0.033 * np.cos(np.radians(360 * day_of_year / 365))
-    I_0 = solar_constant * distance_correction * np.sin(solar_altitude*d2r)
+    I_0 = solar_constant * distance_correction * np.sin(sol_alt * d2r)
     return np.maximum(0, I_0)
 
 ## 4.2. Erbs Model for Diffuse Fraction
-def Erbs_diffuse_fraction(GHI, solar_altitude, day_of_year):
+def Erbs_diffuse_fraction(
+        GHI: np.array,
+        solar_altitude: np.array,
+        day_of_year: np.array,
+        ):
     """
-    Calculate diffuse horizontal irradiance using Erbs et al. (1982) model.
+    get diffuse horizontal irradiance using Erbs et al. (1982) model.
     
     Args:
         GHI (array-like): Global Horizontal Irradiance (W/m²)
@@ -121,7 +131,7 @@ def Erbs_diffuse_fraction(GHI, solar_altitude, day_of_year):
         tuple: (DHI)
     """
     GHI_arr = np.array(GHI)
-    I0 = calculate_extraterrestrial_radiation(solar_altitude, day_of_year)
+    I0 = get_ext_rad(solar_altitude, day_of_year)
     kt = GHI_arr / I0
     
     diffuse_fraction = np.where(
@@ -138,7 +148,9 @@ def Erbs_diffuse_fraction(GHI, solar_altitude, day_of_year):
     return DHI
 
 ## 4.3. Solar Radiation Conversion Functions
-def GHI_MJm2_to_BHI_DHI(GHI_MJm2, solar_altitude, day_of_year):
+def get_BHI_DHI(
+        weather: wd.WeatherData,
+        ):
     """
     Convert Global Horizontal Irradiance to Beam and Diffuse components.
     
@@ -150,31 +162,17 @@ def GHI_MJm2_to_BHI_DHI(GHI_MJm2, solar_altitude, day_of_year):
     Returns:
         tuple: (BHI, DHI) in W/m²
     """
-    GHI = GHI_MJm2 * c.MJ2J/c.h2s
-    DHI = Erbs_diffuse_fraction(GHI, solar_altitude, day_of_year)
+    GHI = weather.GHI_MJm2 * c.MJ2J/c.h2s
+    DHI = Erbs_diffuse_fraction(GHI, weather.sol_alt, weather.sim_time_params.time_range.day_of_year)
     BHI = GHI - DHI
     return BHI, DHI
 
-def calculate_BHI_surf(BHI, delta_azimuth, solar_altitude, surface_tilt):
+def get_delta_azi(
+        solar_azimuth: np.array,
+        surface_azimuth: float,
+        ):
     """
-    Calculate beam radiation on tilted surface.
-    
-    Args:
-        BHI (float/array): Beam Horizontal Irradiance
-        delta_azimuth (float/array): Difference in azimuth angles
-        solar_altitude (float/array): Solar altitude angle
-        surface_tilt (float): Surface tilt angle
-    
-    Returns:
-        float/array: Beam radiation on tilted surface
-    """
-    return np.where(solar_altitude < 5, 0,
-                   np.maximum(0, np.sin(d2r * solar_altitude + d2r * surface_tilt) /
-                            np.sin(d2r * solar_altitude) * np.cos(d2r * delta_azimuth) * BHI))
-
-def calculate_delta_azimuth(solar_azimuth, surface_azimuth):
-    """
-    Calculate the difference between solar and surface azimuth angles.
+    get the difference between solar and surface azimuth angles.
     
     Args:
         solar_azimuth (float/array): Solar azimuth angle
@@ -187,10 +185,40 @@ def calculate_delta_azimuth(solar_azimuth, surface_azimuth):
     delta = np.where(delta > 180, 360 - delta, delta)
     return np.where(delta <= 90, delta, 0)
 
-## 4.4. Total Solar Radiation on Tilted Surface
-def solar_to_unit_surface(BHI, DHI, station, SimulationTimeParameters, surface_tilt, surface_azimuth):
+def get_Norm_BHI(
+        weather, 
+        construction,
+        ):
     """
-    Calculate total solar radiation on a tilted surface.
+    get beam radiation on tilted surface.
+    
+    Args:
+        BHI (float/array): Beam Horizontal Irradiance
+        delta_azimuth (float/array): Difference in azimuth angles
+        solar_altitude (float/array): Solar altitude angle
+        surface_tilt (float): Surface tilt angle
+    
+    Returns:
+        float/array: Beam radiation on tilted surface
+    """
+    sol_alt = weather.sol_alt
+    BHI = weather.BHI
+    surface_tilt = construction.tilt
+    delta_azimuth = get_delta_azi(weather.sol_azi, construction.azimuth)
+
+    return np.where(sol_alt < 5, 0,
+                   np.maximum(0, np.sin(d2r * sol_alt + d2r * surface_tilt) /
+                            np.sin(d2r * sol_alt) * np.cos(d2r * delta_azimuth) * BHI))
+
+
+## 4.4. Total Solar Radiation on Tilted Surface
+def solar_to_unit_surface(
+                        weather,
+                        construction,
+                        ):
+    
+    """
+    get total solar radiation on a tilted surface.
     
     Args:
         BHI (array-like): Beam Horizontal Irradiance (W/m²)
@@ -203,15 +231,14 @@ def solar_to_unit_surface(BHI, DHI, station, SimulationTimeParameters, surface_t
     Returns:
         array-like: Total solar radiation on tilted surface (W/m²)
     """
-    BHI = np.array(BHI)
-    DHI = np.array(DHI)
+
+    BHI = weather.BHI
+    DHI = weather.DHI
     
-    solar_altitude, solar_azimuth = solar_position(station, SimulationTimeParameters)
-    
-    VF = (1 + np.cos(d2r * surface_tilt))/2
+    surf_tilt = construction.tilt
+    VF = (1 + np.cos(d2r * surf_tilt))/2
+
     DHI_surf = np.maximum(0, VF * DHI)
-    
-    delta_azimuth = calculate_delta_azimuth(solar_azimuth, surface_azimuth)
-    BHI_surf = calculate_BHI_surf(BHI, delta_azimuth, solar_altitude, surface_tilt)
+    BHI_surf = get_Norm_BHI(weather, construction)
     
     return np.maximum(0, BHI_surf + DHI_surf)
