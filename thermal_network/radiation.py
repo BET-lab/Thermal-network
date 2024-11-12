@@ -1,3 +1,7 @@
+# import constant as c
+# import location as loc
+# import weather as wd
+
 # 1. Imports and Setup
 from .import constant as c  # relative import (for package)
 from .import location as loc  # relative import (for package)
@@ -51,15 +55,15 @@ def get_solar_position(station, SimulationTimeParameters, standard_longitude=135
         tuple: (solar_altitude, solar_azimuth) in degrees
     """
     # Convert time information to numpy arrays
-    local_hour = np.array(SimulationTimeParameters.time_range.hour)
-    local_min = np.array(SimulationTimeParameters.time_range.minute)
-    local_sec = np.array(SimulationTimeParameters.time_range.second)
+    local_hour = np.array(SimulationTimeParameters.time_range2.hour)
+    local_min = np.array(SimulationTimeParameters.time_range2.minute)
+    local_sec = np.array(SimulationTimeParameters.time_range2.second)
 
     # Location information
     local_latitude, local_longitude = loc.location[station]
     
     # get day of year
-    day_of_year = np.array(SimulationTimeParameters.time_range.dayofyear)
+    day_of_year = np.array(SimulationTimeParameters.time_range2.dayofyear)
     
     # get equation of time
     EOT = equation_of_time(day_of_year)
@@ -106,18 +110,16 @@ def get_ext_rad(
         float/array: Extraterrestrial radiation (W/m²)
     """
     sol_alt = weather.sol_alt
-    day_of_year = weather.sim_time_params.time_range.dayofyear
+    day_of_year = weather.sim_time_params.time_range2.dayofyear
 
     solar_constant = 1367  # W/m²
     distance_correction = 1 + 0.033 * np.cos(np.radians(360 * day_of_year / 365))
-    I_0 = solar_constant * distance_correction * np.sin(sol_alt * d2r)
+    I_0 = solar_constant * distance_correction * np.sin(sol_alt * c.d2r)
     return np.maximum(0, I_0)
 
 ## 4.2. Erbs Model for Diffuse Fraction
 def Erbs_diffuse_fraction(
-        GHI: np.array,
-        solar_altitude: np.array,
-        day_of_year: np.array,
+    weather: wd.WeatherData,
         ):
     """
     get diffuse horizontal irradiance using Erbs et al. (1982) model.
@@ -130,9 +132,9 @@ def Erbs_diffuse_fraction(
     Returns:
         tuple: (DHI)
     """
-    GHI_arr = np.array(GHI)
-    I0 = get_ext_rad(solar_altitude, day_of_year)
-    kt = GHI_arr / I0
+    GHI = weather.GHI
+    I0 = get_ext_rad(weather)
+    kt = GHI / I0
     
     diffuse_fraction = np.where(
         kt <= 0.22,
@@ -144,7 +146,7 @@ def Erbs_diffuse_fraction(
         )
     )
     
-    DHI = GHI_arr * diffuse_fraction
+    DHI = GHI * diffuse_fraction
     return DHI
 
 ## 4.3. Solar Radiation Conversion Functions
@@ -162,8 +164,8 @@ def get_BHI_DHI(
     Returns:
         tuple: (BHI, DHI) in W/m²
     """
-    GHI = weather.GHI_MJm2 * c.MJ2J/c.h2s
-    DHI = Erbs_diffuse_fraction(GHI, weather.sol_alt, weather.sim_time_params.time_range.day_of_year)
+    GHI = weather.GHI
+    DHI = Erbs_diffuse_fraction(weather)
     BHI = GHI - DHI
     return BHI, DHI
 
@@ -202,13 +204,13 @@ def get_Norm_BHI(
         float/array: Beam radiation on tilted surface
     """
     sol_alt = weather.sol_alt
-    BHI = weather.BHI
+    BHI, DHI = get_BHI_DHI(weather)
     surface_tilt = construction.tilt
     delta_azimuth = get_delta_azi(weather.sol_azi, construction.azimuth)
 
     return np.where(sol_alt < 5, 0,
-                   np.maximum(0, np.sin(d2r * sol_alt + d2r * surface_tilt) /
-                            np.sin(d2r * sol_alt) * np.cos(d2r * delta_azimuth) * BHI))
+                   np.maximum(0, np.sin(c.d2r * sol_alt + c.d2r * surface_tilt) /
+                            np.sin(c.d2r * sol_alt) * np.cos(c.d2r * delta_azimuth) * BHI))
 
 
 ## 4.4. Total Solar Radiation on Tilted Surface
@@ -232,11 +234,10 @@ def solar_to_unit_surface(
         array-like: Total solar radiation on tilted surface (W/m²)
     """
 
-    BHI = weather.BHI
-    DHI = weather.DHI
+    BHI, DHI = get_BHI_DHI(weather)
     
     surf_tilt = construction.tilt
-    VF = (1 + np.cos(d2r * surf_tilt))/2
+    VF = (1 + np.cos(c.d2r * surf_tilt))/2
 
     DHI_surf = np.maximum(0, VF * DHI)
     BHI_surf = get_Norm_BHI(weather, construction)
