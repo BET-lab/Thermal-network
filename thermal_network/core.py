@@ -195,9 +195,9 @@ class Construction:
 ## 3.1 Data Processing Function
 def extract_main_sim_data(data: np.ndarray, sim_time_params) -> np.ndarray:
     if data.ndim == 1:
-        return data[sim_time_params.ts_PST:sim_time_params.tN]
+        return data[sim_time_params.ts_PST:sim_time_params.tN+1]
     elif data.ndim == 2:
-        return data[sim_time_params.ts_PST:sim_time_params.tN, :]
+        return data[sim_time_params.ts_PST:sim_time_params.tN+1, :]
 
 ## 3.2 TDMA Calculation Function
 def TDMA(Construction: Construction, T: np.ndarray, T_L: float, T_R: float, dt: float) -> np.ndarray:
