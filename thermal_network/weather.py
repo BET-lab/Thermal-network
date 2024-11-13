@@ -41,9 +41,13 @@ class SimulationTimeParameters:
         self.ts_TST = self.ts_PST + self.ts_MST  # Number of total-simulation time steps
         
         # Generate time arrays
-        self.ts_s_total = np.arange(0, self.tN) * self.dt  # time step array [s]
-        self.ts_m_total = self.ts_s_total * c.s2m  # time step array [min]
-        self.ts_h_total = self.ts_s_total * c.s2h  # time step array [hr]
+        self.ts_s_tot_dt = np.arange(0, self.tN + 1) * self.dt # time step array [s]
+        self.ts_m_tot_dt = self.ts_s_tot_dt * c.s2m # time step array [min]
+        self.ts_h_tot_dt = self.ts_s_tot_dt * c.s2h # time step array [hr]
+        
+        self.ts_s_tot = np.arange(0, self.tN) * self.dt  # time step array [s]
+        self.ts_m_tot = self.ts_s_tot * c.s2m  # time step array [min]
+        self.ts_h_tot = self.ts_s_tot * c.s2h  # time step array [hr]
 
         self.ts_s_main = np.arange(self.ts_PST, self.tN) * self.dt  # time step array [s]
         self.ts_m_main = self.ts_s_main * c.s2m 
