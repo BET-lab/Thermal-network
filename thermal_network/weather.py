@@ -78,8 +78,8 @@ class WeatherData:
     standard_longitude: float = 135  # standard longitude of Korea
 
     def __post_init__(self):
-        import radiation as rd
-        import core
+        from . import radiation as rd
+        from . import core as core
         
         # 원본 데이터 임시 저장
         temp_original = self.temperature.copy()  # 원본 데이터 보존
