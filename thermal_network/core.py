@@ -74,10 +74,11 @@ class IndoorAir:
     volume: float # Volume of indoor air [m3]
     specific_heat_capacity: float = 1005 # specific heat capacity of air [J/kgK]
     density: float = 1.225 # density of air [kg/m3]
-    temperature: float = C2K(20) # initial temperature [K]
+    temperature: float = 20 # initial temperature [K]
 
     def __post_init__(self):
         self.C = self.specific_heat_capacity * self.density  # Volumetric heat capacity [J/m3K]
+        self.T = C2K(self.temperature) # Temperature [K]
 
     def get_thermal_capacity(self):
         return self.volume * self.C # [J/K]
@@ -86,13 +87,13 @@ class IndoorAir:
         return self.volume * self.ACH / c.h2s
     
     def get_heat_gain(self, Q_surf: float, Toa: float, dt: float):
-        Q_ACH = self.C * self.volumetric_flow_rate() * (Toa - self.temperature) * dt # [J]
+        Q_ACH = self.C * self.volumetric_flow_rate() * (Toa - self.T) * dt # [J]
         return Q_surf + Q_ACH
     
     def temp_update(self, heat_gain: float):
         # Calculate indoor air temperature update
         dT = heat_gain / self.get_thermal_capacity() # [K]
-        self.temperature += dT
+        self.T += dT
 
 
 ## 2.4 Building Material Layer Class
@@ -331,11 +332,11 @@ def simulate_one_node_building_exergy(structure: List[Construction], sim_time_pa
 
         # Export to separate CSV files
         base_name = construction.name
-        T_df.to_csv(f"{filepath}/{base_name}_T.csv")
-        q_df.to_csv(f"{filepath}/{base_name}_q.csv")
-        CXcR_df.to_csv(f"{filepath}/{base_name}_XcR.csv")
-        Carnot_eff_df.to_csv(f"{filepath}/{base_name}_Carnot_eff.csv")
-        Norm_rad_df.to_csv(f"{filepath}/{base_name}_Norm_rad.csv")
+        T_df.to_csv(f"{save_path}/{base_name}_T.csv")
+        q_df.to_csv(f"{save_path}/{base_name}_q.csv")
+        CXcR_df.to_csv(f"{save_path}/{base_name}_XcR.csv")
+        Carnot_eff_df.to_csv(f"{save_path}/{base_name}_Carnot_eff.csv")
+        Norm_rad_df.to_csv(f"{save_path}/{base_name}_Norm_rad.csv")
 
     # Post-processing and separate environment data files
     Tia_DPSD = extract_main_sim_data(Tia, sim_time_params.ts_PST)
@@ -348,7 +349,7 @@ def simulate_one_node_building_exergy(structure: List[Construction], sim_time_pa
         columns=["Indoor Air Temperature [°C]"], 
         index=time_index
     )
-    indoor_air_df.to_csv(f"{filepath}/indoor_air_temperature.csv")
+    indoor_air_df.to_csv(f"{save_path}/indoor_air_temperature.csv")
 
     # Create and export outdoor air temperature
     outdoor_air_df = pd.DataFrame(
@@ -356,7 +357,7 @@ def simulate_one_node_building_exergy(structure: List[Construction], sim_time_pa
         columns=["Outdoor Air Temperature [°C]"], 
         index=time_index
     )
-    outdoor_air_df.to_csv(f"{filepath}/outdoor_air_temperature.csv")
+    outdoor_air_df.to_csv(f"{save_path}/outdoor_air_temperature.csv")
 
     # Create and export global horizontal irradiance
     ghi_df = pd.DataFrame(
@@ -364,14 +365,14 @@ def simulate_one_node_building_exergy(structure: List[Construction], sim_time_pa
         columns=["Global Horizontal Irradiance [W/m2]"], 
         index=time_index
     )
-    ghi_df.to_csv(f"{filepath}/global_horizontal_irradiance.csv")
+    ghi_df.to_csv(f"{save_path}/global_horizontal_irradiance.csv")
     
 
 def run_building_exergy_model_fully_unsteady(
         structure: List[Construction],
         weather: wd.WeatherData,
         indoor_air: IndoorAir,
-        filepath: str,
+        save_path: str,
         ):
     ''' 미완성 '''
     # Main simulation function
@@ -507,14 +508,14 @@ def run_building_exergy_model_fully_unsteady(
     CXf_dfs = [pd.DataFrame(CXf_DPSD[cidx], columns=construction.node_surf_pos, index=time_index) for cidx, construction in enumerate(structure)]
 
     # CSV 파일 저장
-    [T_dfs[i].to_csv(f"{filepath}/{structure[i].name}_T.csv") for i in range(len(structure))]
-    [q_dfs[i].to_csv(f"{filepath}/{structure[i].name}_q.csv") for i in range(len(structure))]
-    [CXcR_dfs[i].to_csv(f"{filepath}/{structure[i].name}_XcR.csv") for i in range(len(structure))]
-    [Carnot_eff_dfs[i].to_csv(f"{filepath}/{structure[i].name}_Carnot_eff.csv") for i in range(len(structure))]
-    [Norm_rad_dfs[i].to_csv(f"{filepath}/{structure[i].name}_Norm_rad.csv") for i in range(len(structure))]
-    [CXstR_dfs[i].to_csv(f"{filepath}/{structure[i].name}_CXstR.csv") for i in range(len(structure))]
-    [CXst_dfs[i].to_csv(f"{filepath}/{structure[i].name}_CXst.csv") for i in range(len(structure))]
-    [CXf_dfs[i].to_csv(f"{filepath}/{structure[i].name}_CXf.csv") for i in range(len(structure))]
+    [T_dfs[i].to_csv(f"{save_path}/{structure[i].name}_T.csv") for i in range(len(structure))]
+    [q_dfs[i].to_csv(f"{save_path}/{structure[i].name}_q.csv") for i in range(len(structure))]
+    [CXcR_dfs[i].to_csv(f"{save_path}/{structure[i].name}_XcR.csv") for i in range(len(structure))]
+    [Carnot_eff_dfs[i].to_csv(f"{save_path}/{structure[i].name}_Carnot_eff.csv") for i in range(len(structure))]
+    [Norm_rad_dfs[i].to_csv(f"{save_path}/{structure[i].name}_Norm_rad.csv") for i in range(len(structure))]
+    [CXstR_dfs[i].to_csv(f"{save_path}/{structure[i].name}_CXstR.csv") for i in range(len(structure))]
+    [CXst_dfs[i].to_csv(f"{save_path}/{structure[i].name}_CXst.csv") for i in range(len(structure))]
+    [CXf_dfs[i].to_csv(f"{save_path}/{structure[i].name}_CXf.csv") for i in range(len(structure))]
 
     # 환경 데이터 처리
     Tia_DPSD = extract_main_sim_data(Tia, sim_time_params)
@@ -528,11 +529,11 @@ def run_building_exergy_model_fully_unsteady(
 
     # Create and export indoor air temperature
     Q_room_gain_df.to_csv(
-        f"{filepath}/room_heat_gain.csv",
+        f"{save_path}/room_heat_gain.csv",
                 )
     
     room_X_demand_df.to_csv(
-        f"{filepath}/room_exergy_demand.csv",
+        f"{save_path}/room_exergy_demand.csv",
         )
 
     indoor_air_df = pd.DataFrame(
@@ -555,6 +556,6 @@ def run_building_exergy_model_fully_unsteady(
         index=time_index
     )
 
-    indoor_air_df.to_csv(f"{filepath}/indoor_air_temperature.csv")
-    outdoor_air_df.to_csv(f"{filepath}/outdoor_air_temperature.csv")
-    ghi_df.to_csv(f"{filepath}/global_horizontal_irradiance.csv")
+    indoor_air_df.to_csv(f"{save_path}/indoor_air_temperature.csv")
+    outdoor_air_df.to_csv(f"{save_path}/outdoor_air_temperature.csv")
+    ghi_df.to_csv(f"{save_path}/global_horizontal_irradiance.csv")
