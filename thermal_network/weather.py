@@ -147,7 +147,10 @@ class SimulationTimeParameters:  # 필요 수정사항: stat_time 설정에 따�
         self.ts_m_pre = self.ts_s_pre * c.s2m
         self.ts_h_pre = self.ts_s_pre * c.s2h
 
-        if self.start_time.dtype == pd.Timestamp:
+        if self.start_time is None: 
+            pass
+
+        elif self.start_time.dtype == pd.Timestamp:
             # Calculate simulation times
             self.end_time = self.start_time + pd.Timedelta(hours=self.TST)
             self.time_step = pd.Timedelta(seconds=self.dt)
@@ -161,8 +164,9 @@ class SimulationTimeParameters:  # 필요 수정사항: stat_time 설정에 따�
             # self.start_idx = int(accumulated_hours * c.h2s / self.dt)  # 초 단위로 변환 후 dt로 나눔
             self.time_range = pd.date_range(start=self.start_time, end=self.end_time, freq = self.time_step)
             self.time_range2 = pd.date_range(start=self.start_time, end=self.end_time + pd.Timedelta(seconds=self.dt), freq=self.time_step)
-        else: 
-            pass
+            
+        else:
+            raise ValueError('Invalid start_time type. Use pd.Timestamp type.')
 
     def get_pre_simulation_range(self):
         return self.time_range[:self.ts_PST]
