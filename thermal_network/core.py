@@ -125,6 +125,7 @@ class Construction:
     name: str
     layers: List[Layer]
     roughness: str
+    solar_absorptance: float
     Tinit: float
     area: float
     azimuth: float
@@ -393,9 +394,10 @@ def run_building_exergy_model_fully_unsteady(
     Vz = weather.Vz
 
     # Calculate solar radiation
+    sol_absorptance = np.array([construction.solar_absorptance for construction in structure])
     Norm_rad = np.zeros((num_constructions, tN+1)) # [W/m2]
     for i in range(num_constructions):
-        Norm_rad[i] = rd.solar_to_unit_surface(
+        Norm_rad[i] = sol_absorptance[i] * rd.solar_to_unit_surface(
                                             weather = weather,
                                             construction = structure[i],
                                             )

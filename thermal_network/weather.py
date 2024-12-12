@@ -120,7 +120,7 @@ class SimulationTimeParameters:  # 필요 수정사항: stat_time 설정에 따�
     PST: float  # Pre-simulation time [hr]
     MST: float  # Main-simulation time [hr]
     dt: float   # Time step [s]
-    start_time = None  # Start time
+    start_time: pd.Timestamp = None  # Start time
 
     def __post_init__(self):
         # Calculate time steps
