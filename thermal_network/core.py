@@ -197,9 +197,9 @@ class Construction:
 ## 3.1 Data Processing Function
 def extract_main_sim_data(data: np.ndarray, sim_time_params) -> np.ndarray:
     if data.ndim == 1:
-        return data[sim_time_params.ts_PST:sim_time_params.tN+1]
+        return data[sim_time_params.ts_PST:sim_time_params.tN]
     elif data.ndim == 2:
-        return data[sim_time_params.ts_PST:sim_time_params.tN+1, :]
+        return data[sim_time_params.ts_PST:sim_time_params.tN, :]
 
 ## 3.2 TDMA Calculation Function
 def TDMA(Construction: Construction, T: np.ndarray, T_L: float, T_R: float, dt: float) -> np.ndarray:
@@ -423,13 +423,13 @@ def run_building_exergy_model_fully_unsteady(
     R_ib = 1 / h_ib
 
     # Main simulation time loop
-    Q_room_gain = np.zeros((tN+1,1))
+    Q_room_gain = np.zeros((tN,1))
     for n in tqdm(range(tN), desc="Simulation progress"):
 
         # Calculate heat gain and update indoor air temperature
         Q_surf = sum(h_ib * construction.area * (T_R[cidx][n, -1] - Tia[n,0]) for cidx, construction in enumerate(structure)) * dt # [W]
-        room_heat_gain = indoor_air.get_heat_gain(Q_surf, Toa[n+1,0], dt) # [J]
-        Q_room_gain[n+1,0] = room_heat_gain/dt # [W]
+        room_heat_gain = indoor_air.get_heat_gain(Q_surf, Toa[n,0], dt) # [J]
+        Q_room_gain[n,0] = room_heat_gain/dt # [W]
         indoor_air.temp_update(heat_gain=room_heat_gain)
         Tia[n+1,0] = indoor_air.temperature
         
@@ -488,14 +488,14 @@ def run_building_exergy_model_fully_unsteady(
     # 모든 데이터 pre simulation data 제거
     Q_room_gain_DPSD = extract_main_sim_data(Q_room_gain, sim_time_params)
     room_X_demand_DPSD = extract_main_sim_data(room_X_demand, sim_time_params)
-    T_DPSD = [extract_main_sim_data(T[i], sim_time_params) for i in range(len(structure))]
-    q_DPSD = [extract_main_sim_data(q[i], sim_time_params) for i in range(len(structure))]
-    Carnot_eff_hf_DPSD = [extract_main_sim_data(Carnot_eff_hf[i], sim_time_params) for i in range(len(structure))]
-    CXcR_DPSD = [extract_main_sim_data(CXcR[i], sim_time_params) for i in range(len(structure))]
-    Norm_rad_DPSD = [extract_main_sim_data(Norm_rad[i], sim_time_params) for i in range(len(structure))]
-    CXstR_DPSD = [extract_main_sim_data(CXstR[i], sim_time_params) for i in range(len(structure))]
-    CXst_DPSD = [extract_main_sim_data(CXst[i], sim_time_params) for i in range(len(structure))]
-    CXf_DPSD = [extract_main_sim_data(CXf[i], sim_time_params) for i in range(len(structure))]
+    T_DPSD = [extract_main_sim_data(T[i], sim_time_params) for i in range(len(structure))] # Structure 별로 추출
+    q_DPSD = [extract_main_sim_data(q[i], sim_time_params) for i in range(len(structure))] # Structure 별로 추출
+    Carnot_eff_hf_DPSD = [extract_main_sim_data(Carnot_eff_hf[i], sim_time_params) for i in range(len(structure))] # Structure 별로 추출
+    CXcR_DPSD = [extract_main_sim_data(CXcR[i], sim_time_params) for i in range(len(structure))] # Structure 별로 추출
+    Norm_rad_DPSD = [extract_main_sim_data(Norm_rad[i], sim_time_params) for i in range(len(structure))] # Structure 별로 추출
+    CXstR_DPSD = [extract_main_sim_data(CXstR[i], sim_time_params) for i in range(len(structure))] # Structure 별로 추출
+    CXst_DPSD = [extract_main_sim_data(CXst[i], sim_time_params) for i in range(len(structure))] # Structure 별로 추출
+    CXf_DPSD = [extract_main_sim_data(CXf[i], sim_time_params) for i in range(len(structure))] # Structure 별로 추출
 
     # DataFrame 생성
     Q_room_gain_df = pd.DataFrame(Q_room_gain_DPSD, columns=["Room Heat Gain [W]"], index=time_index)
