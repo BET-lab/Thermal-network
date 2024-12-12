@@ -147,10 +147,11 @@ class SimulationTimeParameters:  # 필요 수정사항: stat_time 설정에 따�
         self.ts_m_pre = self.ts_s_pre * c.s2m
         self.ts_h_pre = self.ts_s_pre * c.s2h
 
-        if self.start_time is None: 
-            pass
+        if self.start_time is not None: 
 
-        elif self.start_time.dtype == pd.Timestamp:
+            if not isinstance(self.start_time, pd.Timestamp):
+                raise TypeError('start_time must be a pd.Timestamp')
+            
             # Calculate simulation times
             self.end_time = self.start_time + pd.Timedelta(hours=self.TST)
             self.time_step = pd.Timedelta(seconds=self.dt)
@@ -166,15 +167,25 @@ class SimulationTimeParameters:  # 필요 수정사항: stat_time 설정에 따�
             self.time_range2 = pd.date_range(start=self.start_time, end=self.end_time + pd.Timedelta(seconds=self.dt), freq=self.time_step)
             
         else:
-            raise ValueError('Invalid start_time type. Use pd.Timestamp type.')
+            # start_time이 None인 경우의 기본 처리
+            self.end_time = None
+            self.time_step = None
+            self.time_range = None
+            self.time_range2 = None
 
     def get_pre_simulation_range(self):
+        if self.time_range is None:
+            raise ValueError("No time range available. Provide start_time during initialization.")
         return self.time_range[:self.ts_PST]
 
     def get_main_simulation_range(self):
+        if self.time_range is None:
+            raise ValueError("No time range available. Provide start_time during initialization.")
         return self.time_range[self.ts_PST:]
 
     def get_time_index(self, time):
+        if self.time_range is None:
+            raise ValueError("No time range available. Provide start_time during initialization.")
         return self.time_range.get_loc(time)
 
  
