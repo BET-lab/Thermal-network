@@ -1,11 +1,11 @@
-# import constant as c
-# import location as loc
-# import weather as wd
+from thermal_network import constant as c
+from thermal_network import location as loc
+from thermal_network import weather as wd
 
 # 1. Imports and Setup
-from .import constant as c  # relative import (for package)
-from .import location as loc  # relative import (for package)
-from .import weather as wd  # relative import (for package)
+# from .import constant as c  # relative import (for package)
+# from .import location as loc  # relative import (for package)
+# from .import weather as wd  # relative import (for package)
 
 import math
 from datetime import datetime
@@ -174,6 +174,7 @@ def get_delta_azi(
         surface_azimuth: float,
         ):
     """
+    2024-12-14 검토완료 이상 없음
     get the difference between solar and surface azimuth angles.
     
     Args:
@@ -187,12 +188,15 @@ def get_delta_azi(
     delta = np.where(delta > 180, 360 - delta, delta)
     return np.where(delta <= 90, delta, 0)
 
+
 def get_Norm_BHI(
-        weather, 
+        weather,
         construction,
         ):
     """
+    2024-12-15 에러 발견
     get beam radiation on tilted surface.
+
     
     Args:
         BHI (float/array): Beam Horizontal Irradiance
@@ -208,9 +212,10 @@ def get_Norm_BHI(
     surface_tilt = construction.tilt
     delta_azimuth = get_delta_azi(weather.sol_azi, construction.azimuth)
 
-    return np.where(sol_alt < 5, 0,
-                   np.maximum(0, np.sin(c.d2r * sol_alt + c.d2r * surface_tilt) /
-                            np.sin(c.d2r * sol_alt) * np.cos(c.d2r * delta_azimuth) * BHI))
+    return np.where(sol_alt < 10, 0,
+                   np.maximum(0, np.sin(c.d2r * (sol_alt + surface_tilt)) # 태양고도각과 벽체 기울기에 의한 일사 감소비율 (옆에서 보았을 때) 
+                 * np.cos(c.d2r * delta_azimuth) # 방위각 차이에 의한 일사 감소비율 (위에서 보았을 때)
+                 * BHI / np.sin(c.d2r * sol_alt))) # 벽체에 수직입사하는 일사량
 
 
 ## 4.4. Total Solar Radiation on Tilted Surface
@@ -239,7 +244,7 @@ def solar_to_unit_surface(
     surf_tilt = construction.tilt
     VF = (1 + np.cos(c.d2r * surf_tilt))/2
 
-    DHI_surf = np.maximum(0, VF * DHI)
+    DHI_surf = np.maximum(0, VF * DHI) # 확산 일사 
     BHI_surf = get_Norm_BHI(weather, construction)
     
     return np.maximum(0, BHI_surf + DHI_surf)

@@ -1,5 +1,4 @@
-from .import constant as c
-# import constant as c
+from thermal_network import constant as c
 
 import numpy as np
 import pandas as pd
@@ -43,7 +42,7 @@ class SimulationTimeParameters:  # 필요 수정사항: stat_time 설정에 따�
         
     tN : int
         Total number of time steps (전체 시간 단계 수)
-        0번째 단계를 포함한 전체 시간 단계의 수
+        0번째 단계와 마지막 타임스텝을 포함한 전체 시간 단계의 수
         
     ts_PST : int
         Number of pre-simulation time steps (사전 시뮬레이션 시간 단계 수)
@@ -125,7 +124,7 @@ class SimulationTimeParameters:  # 필요 수정사항: stat_time 설정에 따�
     def __post_init__(self):
         # Calculate time steps
         self.TST = self.PST + self.MST  # Total-simulation time [hr]
-        self.tN = int(self.TST*c.h2s/self.dt + 1) # Number of time steps +1 for the 0th time step
+        self.tN = int(1 + self.TST*c.h2s/self.dt) # Number of time steps +1 for the 0th time step
         self.ts_PST = int(self.PST * c.h2s / self.dt)  # Number of pre-simulation time steps
         self.ts_MST = int(self.MST * c.h2s / self.dt)  # Number of main-simulation time steps
         self.ts_TST = self.ts_PST + self.ts_MST  # Number of total-simulation time steps
@@ -192,44 +191,108 @@ class SimulationTimeParameters:  # 필요 수정사항: stat_time 설정에 따�
 ## 2.2 Weather Data Class
 @dataclass
 class WeatherData:
+    '''
+    24.12.16 수정 - solar altitude, azimuth의 중복 interpoation을 제거하였음
+    get_solar_position 함수는 원래부터 interpolation을 수행하므로 중복 interpolation을 제거함
+    
+    기상청 데이터를 기반으로 쉽게 날씨데이터에 이용할 수 있게 전처리하는 클래스
+    데이터의 길이를 시뮬레이션 시간간격 및 길이에 맞게 보간하고
+    온도를 절대온도로 변환함
+    태양의 고도 및 방위각을 계산하여 반환
+    전천일사의 단위를 MJ/m²에서 W/m²로 변환함
+    
+    Parameters
+    ----------
+    location : str
+        한국 내 지역명으로 "광주", "서울" 등과 같이 지역명을 한글 문자열로 입력
+        
+    sim_time_params : SimulationTimeParameters
+        Weather data의 전처리 등을 위해 이용되는 클래스
+        
+    temperature: np.ndarray
+        온도 데이터로 array
+        
+    wind_speed: np.ndarray
+        풍속 데이터 array
+        
+    GHI_MJm2 : np.ndarray
+        단위면적당 1시간동안 일사된 수평전천일사량으로 확산일사와 직달일사가 합산된 값임
+        
+    standard_longitude: float
+        한국의 표준 경도로 기본값은 135로 설정
+        
+    Returns
+    ------------------
+    temp : np.array
+        tN+1 타임스텝까지 절대온도로 변환된 온도 데이터 array
+        
+    wind_speed : np.array
+        tN+1 타임스텝까지 보간된 풍속 데이터 array
+        
+    sol_alt : np.array
+        tN+1 타임스텝까지 보간된 태양 고도 array
+        
+    sol_azi : np.array
+        tN+1 타임스텝까지 보간된 태양 방위각 array
+        
+    GHI : np.array
+        tN+1 타임스텝까지 보간된 일사량 데이터 array
+        
+    Examples
+    --------
+    >>> # 기본 시뮬레이션 시간 설정
+    >>> params = SimulationTimeParameters(PST=1.0, MST=24.0, dt=3600)
+    >>>
+    >>> # 실제 시각 기반 시뮬레이션 설정
+    >>> params_with_time = SimulationTimeParameters(
+    ...     PST=1.0,
+    ...     MST=24.0,
+    ...     dt=3600,
+    ...     start_time=pd.Timestamp('2024-01-01')
+    ... )
+    
+    >>> # 기본 날씨 데이터 설정
+    >>> weather = WeatherData(
+    ...     location='서울',
+    ...     sim_time_params=params,
+    ...     temperature=np.array([10, 15, 20, 25, 30]),
+    ...     wind_speed=np.array([1, 2, 3, 4, 5]),
+    ...     GHI_MJm2=np.array([0, 1, 2, 3, 4])
+    ... )
+    
+    '''
     location: str
     sim_time_params: SimulationTimeParameters
     temperature: np.ndarray
-    Vz: np.ndarray
+    wind_speed: np.ndarray
     GHI_MJm2: np.ndarray
     standard_longitude: float = 135  # standard longitude of Korea
 
     def __post_init__(self):
-        from . import radiation as rd
-        from . import core as core
+        from thermal_network import radiation as rd
+        from thermal_network import core as core
         
-        # 원본 데이터 임시 저장
-        temp_original = self.temperature.copy()  # 원본 데이터 보존
-
-        # cut
-        # start_idx = self.sim_time_params.start_idx
-        # end_idx = start_idx + self.sim_time_params.tN + 1
-        
-        # Temperature 처리
-        temp_kelvin = core.C2K(temp_original)  # 섭씨->켈빈 변환
+        # temperature data       
+        tN = self.sim_time_params.tN 
+        temp_kelvin = core.C2K(self.temperature.copy())  # 섭씨->켈빈 변환
         temp_interpolated = core.interpolate_hourly_data(temp_kelvin, self.sim_time_params.dt)  # 보간
-        self.temp = temp_interpolated[:self.sim_time_params.tN+1]  # 추출
+        self.temp = temp_interpolated[:tN+1]  # 0 step ~ last + 1 step 까지 추출 (시작은 전처리에서 처리해야함)
         
-        # 나머지 데이터 처리
-        self.Vz = core.interpolate_hourly_data(self.Vz, self.sim_time_params.dt)[:self.sim_time_params.tN+1]
+        # wind speed data
+        self.wind_speed = core.interpolate_hourly_data(self.wind_speed, self.sim_time_params.dt)[:tN+1]
         
-        solar_position = rd.get_solar_position(
+        # solar position data
+        self.sol_alt, self.sol_azi = rd.get_solar_position(
             self.location, 
             self.sim_time_params, 
             self.standard_longitude
-        )[:self.sim_time_params.tN+1]
+        )
 
-        self.sol_alt = core.interpolate_hourly_data(solar_position[0], self.sim_time_params.dt)[:self.sim_time_params.tN+1]
-
-        self.sol_azi = core.interpolate_hourly_data(solar_position[1], self.sim_time_params.dt)[:self.sim_time_params.tN+1]
+        self.sol_alt = self.sol_alt[:tN+1]
+        self.sol_azi = self.sol_azi[:tN+1]
         
+        # Global Horizontal Irradiance (GHI) data (MJ/m² -> W/m²)
         self.GHI = core.interpolate_hourly_data(
                 self.GHI_MJm2 * c.MJ2J / c.h2s, 
                 self.sim_time_params.dt
-            )[:self.sim_time_params.tN+1]
-        
+            )[:tN+1]
