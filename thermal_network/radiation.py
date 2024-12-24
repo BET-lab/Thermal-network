@@ -1,5 +1,4 @@
 from thermal_network import constant as c
-from thermal_network import location as loc
 from thermal_network import weather as wd
 
 # 1. Imports and Setup
@@ -10,6 +9,10 @@ from thermal_network import weather as wd
 import math
 from datetime import datetime
 import numpy as np
+'''
+문제 -> 동서쪽이 각각 지금 방위각이 반대로 반영되고 있는 것 같음 
+
+'''
 
 # 2. Constants and Conversions
 ## 2.1. Angle Unit Conversions
@@ -43,6 +46,8 @@ def equation_of_time(day_of_year):
 
 ## 3.2. Solar Position Calculator
 def get_solar_position(station, SimulationTimeParameters, standard_longitude=135):
+    from thermal_network import location as loc
+    
     """
     get solar altitude and azimuth for a given location and time.
     
@@ -60,7 +65,7 @@ def get_solar_position(station, SimulationTimeParameters, standard_longitude=135
     local_sec = np.array(SimulationTimeParameters.time_range2.second)
 
     # Location information
-    local_latitude, local_longitude = loc.location[station]
+    local_latitude, local_longitude = loc[station]
     
     # get day of year
     day_of_year = np.array(SimulationTimeParameters.time_range2.dayofyear)
@@ -174,6 +179,7 @@ def get_delta_azi(
         surface_azimuth: float,
         ):
     """
+    2024-12-21 delta 90도 이상일 때 0되는 부분 제거
     2024-12-14 검토완료 이상 없음
     get the difference between solar and surface azimuth angles.
     
@@ -186,7 +192,7 @@ def get_delta_azi(
     """
     delta = np.abs(solar_azimuth - surface_azimuth)
     delta = np.where(delta > 180, 360 - delta, delta)
-    return np.where(delta <= 90, delta, 0)
+    return delta
 
 
 def get_Norm_BHI(
@@ -196,6 +202,7 @@ def get_Norm_BHI(
     """
     2024-12-15 에러 발견
     get beam radiation on tilted surface.
+    delta가 90도 이상일 때 -> 0으로 처리
 
     
     Args:
@@ -212,10 +219,13 @@ def get_Norm_BHI(
     surface_tilt = construction.tilt
     delta_azimuth = get_delta_azi(weather.sol_azi, construction.azimuth)
 
-    return np.where(sol_alt < 10, 0,
-                   np.maximum(0, np.sin(c.d2r * (sol_alt + surface_tilt)) # 태양고도각과 벽체 기울기에 의한 일사 감소비율 (옆에서 보았을 때) 
-                 * np.cos(c.d2r * delta_azimuth) # 방위각 차이에 의한 일사 감소비율 (위에서 보았을 때)
-                 * BHI / np.sin(c.d2r * sol_alt))) # 벽체에 수직입사하는 일사량
+    Norm_BHI = np.where(delta_azimuth < 90, 
+                    np.where(sol_alt < 12, 0, np.maximum(0, np.sin(c.d2r * (sol_alt + surface_tilt)) # 태양고도각과 벽체 기울기에 의한 일사 감소비율 (옆에서 보았을 때) 
+                                                            * np.cos(c.d2r * delta_azimuth))) # 방위각 차이에 의한 일사 감소비율 (위에서 보았을 때)
+                                                            * BHI / np.sin(c.d2r * sol_alt) # 수평 -> Q_incident
+                    ,0)
+    
+    return Norm_BHI
 
 
 ## 4.4. Total Solar Radiation on Tilted Surface
