@@ -1,19 +1,12 @@
-# Thermal-network
 
-This files attribute the function and class for 1 dimensional thermal network analysis
+## 개요
+
+이 라이브러리는 건물 열  네트워크 모델링 및 시뮬레이션을 위한 다양한 모듈을 제공합니다. 각 모듈은 특정한 역할을 수행하며, 상호 연결되어 열 전달, 복사, 대류, 기상 데이터 등의 처리를 지원합니다.
 
 ## Installation
 ```
 pip install git+https://github.com/BET-lab/Thermal-network.git
 ```
-
-## Usage
-
-# Thermal Network Library
-
-## 개요
-
-이 라이브러리는 건물 열  네트워크 모델링 및 시뮬레이션을 위한 다양한 모듈을 제공합니다. 각 모듈은 특정한 역할을 수행하며, 상호 연결되어 열 전달, 복사, 대류, 기상 데이터 등의 처리를 지원합니다.
 
 ## 모듈 설명
 
