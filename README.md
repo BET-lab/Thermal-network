@@ -79,8 +79,9 @@ solar_radiation = radiation.solar_to_unit_surface(weather_data, some_constructio
 
 - `core.py`:
     - 입력 온도를 켈빈 단위로 자동 변환 기능 추가 필요
+    - 저장 csv 파일 네이밍 고민 및 컬럼 수정 필요 
 - `radiation.py`:
-    - 동/서쪽 방위각 처리 오류 수정 필요
+    - 기상데이터 선형보간에 따른 일출전, 일몰후 존재하는 직달일사 값 제거 알고리즘 구현 필요 
 - `weather.py`:
     - `start_time` 설정을 통한 유연한 시뮬레이션 시작 기능 추가 필요
     - 입력 기상 데이터의 시간간격을 자유롭게 설정할 수 있게 설정 필요 (현재는 1시간 간격이 디폴트임)
