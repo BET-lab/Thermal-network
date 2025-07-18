@@ -1,0 +1,28 @@
+[project]
+name = "thermal-network"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "Habin Jo", email = "habinjo0608@gmail.com" }
+]
+requires-python = ">=3.10"
+dependencies = [
+    "dartwork-mpl",
+    "ipykernel>=6.29.5",
+    "matplotlib>=3.10.0",
+    "notebook>=7.3.2",
+    "numpy>=2.2.3",
+    "pandas>=2.2.3",
+    "salib>=1.5.1",
+    "scipy>=1.15.2",
+    "seaborn>=0.13.2",
+    "tqdm>=4.67.1",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.uv.sources]
+dartwork-mpl = { git = "https://github.com/dartwork-repo/dartwork-mpl" }
